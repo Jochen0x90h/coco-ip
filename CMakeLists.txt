@@ -1,14 +1,14 @@
 cmake_minimum_required(VERSION 3.19)
 
 # set project
-project(coco-udp)
+project(coco-ip)
 
 # configure languages
 enable_language(CXX)
 set(CMAKE_CXX_STANDARD 20)
 
 # build type
-message("*** Type: ${CMAKE_BUILD_TYPE}${CMAKE_CONFIGURATION_TYPES}")
+message("*** Type: ${CMAKE_BUILD_TYPE}") #${CMAKE_CONFIGURATION_TYPES}")
 add_compile_definitions($<$<CONFIG:Debug>:DEBUG>)
 
 # compiler
@@ -31,6 +31,14 @@ find_package(coco-devboards CONFIG)
 
 # source
 add_subdirectory(coco)
+
+# check if we are on a "normal" operating system such as Windows or Linux
+if(NOT ${CMAKE_CROSSCOMPILING})
+    find_package(GTest CONFIG)
+
+    # enable testing, adds test or RUN_TESTS target to run all tests
+    enable_testing()
+endif()
 
 # test executables
 add_subdirectory(test)

@@ -1,27 +1,28 @@
 #pragma once
 
-#include <coco/UdpSocket.hpp>
+#include <coco/IpSocket.hpp>
 #include <coco/IntrusiveList.hpp>
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h> // see https://learn.microsoft.com/en-us/windows/win32/winsock/creating-a-basic-winsock-application
-#include <ws2tcpip.h>
 #include <coco/platform/Loop_native.hpp> // includes Windows.h (after winsock2.h)
 
 
 namespace coco {
 
-class UdpSocket_Win32 : public UdpSocket, public Loop_Win32::CompletionHandler {
+class IpSocket_Win32 : public IpSocket, public Loop_Win32::CompletionHandler {
 public:
     /// @brief Constructor.
     /// @param loop event loop
-    UdpSocket_Win32(Loop_Win32 &loop);
+    /// @param type socket type such as SOCK_STREAM or SOCK_DGRAM
+    /// @param protocol protocol such as IPPROTO_TCP or IPPROTO_UDP
+    IpSocket_Win32(Loop_Win32 &loop, int type = SOCK_STREAM, int protocol = IPPROTO_TCP);
 
-    ~UdpSocket_Win32() override;
+    ~IpSocket_Win32() override;
 
-    // UdpSocket methods
-    bool open(uint16_t protocolId, int localPort) override;
-    bool join(ip::v6::Address const &multicastGroup) override;
+    // TcpSocket methods
+    bool connect(const ip::Endpoint &endpoint, int size = sizeof(ip::Endpoint), int localPort = 0) override;
+    using IpSocket::connect;
 
     // BufferDevice methods
     class Buffer;
@@ -32,15 +33,14 @@ public:
     void close() override;
 
 
-    /// @brief Buffer for transferring data to/from a file.
+    /// @brief Buffer for transferring data to/from a TCP socket.
     ///
     class Buffer : public coco::Buffer, public IntrusiveListNode, public IntrusiveListNode2 {
-        friend class UdpSocket_Win32;
+        friend class IpSocket_Win32;
     public:
-        Buffer(UdpSocket_Win32 &device, int size);
+        Buffer(IpSocket_Win32 &device, int size);
         ~Buffer() override;
 
-        // Buffer methods
         bool start(Op op) override;
         bool cancel() override;
 
@@ -48,13 +48,7 @@ public:
         void start();
         void handle(OVERLAPPED *overlapped);
 
-        UdpSocket_Win32 &device_;
-        union {
-            sockaddr generic;
-            sockaddr_in v4;
-            sockaddr_in6 v6;
-        } endpoint_;
-        INT endpointSize_;
+        IpSocket_Win32 &device_;
         OVERLAPPED overlapped_;
         Op op_;
     };
@@ -63,9 +57,12 @@ protected:
     void handle(OVERLAPPED *overlapped) override;
 
     Loop_Win32 &loop_;
+    int type_;
+    int protocol_;
 
     // socket handle
     SOCKET socket_ = INVALID_SOCKET;
+    OVERLAPPED overlapped_;
 
     // list of buffers
     IntrusiveList<Buffer> buffers_;
