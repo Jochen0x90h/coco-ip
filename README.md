@@ -1,12 +1,15 @@
-# CoCo UDP
+# CoCo IP
 
-UDP/IP module for CoCo
+IP protocol module for CoCo.
+Defines basic address structures and provides socket abstractions.
+Implements UDP/IP and TCP/IP client on native platforms. Additionally import coco-tcp for TCP/IP servers.
 
 ## Import
-Add coco-udp/\<version> to your conanfile where version corresponds to the git tags
+Add coco-ip/\<version> to your conanfile where version corresponds to the git tags.
 
 ## Features
-* Multicast
+* Connection based IP socket (UDP with fixed destination address or TCP client)
+* Connectionless UDP socket with multicast
 
 ## Supported Platforms
 * Native

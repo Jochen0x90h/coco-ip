@@ -4,8 +4,8 @@ from conan.tools.cmake import CMake
 
 
 class Project(ConanFile):
-    name = "coco-udp"
-    description = "UDP/IP module for CoCo"
+    name = "coco-ip"
+    description = "IP protocol module for CoCo"
     license = "MIT"
     settings = "os", "compiler", "build_type", "arch"
     options = {
@@ -23,12 +23,15 @@ class Project(ConanFile):
         return False
 
     def requirements(self):
-        self.requires("coco-loop/0.6.0", options={"platform": self.options.platform})
-        self.requires("coco-device/0.3.0", options={"platform": self.options.platform})
+        self.requires("coco-loop/0.7.0", options={"platform": self.options.platform})
+        self.requires("coco-device/0.4.0", options={"platform": self.options.platform})
 
     def build_requirements(self):
-        self.tool_requires("coco-toolchain/0.3.0", options={"platform": self.options.platform})
-        self.test_requires("coco-devboards/0.6.0", options={"platform": self.options.platform})
+        self.tool_requires("coco-toolchain/0.4.0", options={"platform": self.options.platform})
+        self.test_requires("coco-devboards/0.7.0", options={"platform": self.options.platform})
+        if not self.cross():
+            # platform is based on a "normal" operating system such as Windows, MacOS, Linux
+            self.test_requires("gtest/1.17.0")
 
     keep_imports = True
     def imports(self):
