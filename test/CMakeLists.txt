@@ -37,9 +37,11 @@ function(board_test TEST BOARD_LIB)
     endif()
 endfunction()
 
+board_test(ConnectedUdp4SocketTest coco-devboards::native)
+board_test(ConnectedUdp6SocketTest coco-devboards::native)
+board_test(Tcp4SocketTest coco-devboards::native)
 board_test(Udp4SocketTest coco-devboards::native)
 board_test(Udp6SocketTest coco-devboards::native)
-board_test(ConnectedUdp6SocketTest coco-devboards::native)
 
 
 

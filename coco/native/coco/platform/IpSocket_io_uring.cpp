@@ -1,0 +1,213 @@
+#include "IpSocket_io_uring.hpp"
+
+
+namespace coco {
+
+IpSocket_io_uring::IpSocket_io_uring(Loop_io_uring &loop, int type, int protocol)
+    : IpSocket(State::DISABLED)
+    , loop_(loop)
+    , type_(type), protocol_(protocol)
+{
+}
+
+IpSocket_io_uring::~IpSocket_io_uring() {
+    ::close(socket_);
+}
+
+int IpSocket_io_uring::getBufferCount() {
+    return buffers_.count();
+}
+
+IpSocket_io_uring::Buffer &IpSocket_io_uring::getBuffer(int index) {
+    return buffers_.get(index);
+}
+
+bool IpSocket_io_uring::connect(const ip::Endpoint &endpoint, int size, int localPort) {
+    if (socket_ != INVALID_SOCKET)
+        return false;
+
+        // create socket
+    int socket = ::socket(endpoint.protocolId, type_ | SOCK_NONBLOCK, protocol_);
+    if (socket == INVALID_SOCKET) {
+        int e = errno;
+        return false;
+    }
+
+    // reuse address/port
+    // https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ
+    int reuse = 1;
+    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0) {
+        int e = errno;
+        ::close(socket);
+        return false;
+    }
+
+    // bind to any local address/port (required by ConnectEx)
+    sockaddr_in6 local = {.sin6_family = endpoint.protocolId, .sin6_port = htons(localPort)};
+    if (bind(socket, (sockaddr *)&local, sizeof(local)) < 0) {
+        int e = errno;
+        ::close(socket);
+        return false;
+    }
+
+    if (type_ == SOCK_DGRAM) {
+        // connect UDP
+        if (::connect(socket, (struct sockaddr *)&endpoint, size) < 0) {
+            int error = errno;           
+            ::close(socket);
+            return false;
+        }
+        socket_ = socket;
+
+        // set state
+        st.set(State::READY);
+
+        // enable buffers
+        for (auto &buffer : buffers_) {
+            buffer.setReady(0);
+        }
+
+        // resume all coroutines waiting for state change
+        st.notify(Events::ENTER_OPENING | Events::ENTER_READY);
+    } else {
+        // connect TCP
+        loop_.submitConnect(socket, &endpoint, this);
+        socket_ = socket;
+
+        // set state
+        st.set(State::OPENING);
+
+        // set buffers READY, transfers can be started but get submitted to the OS when the device becomes READY
+        for (auto &buffer : buffers_) {
+            buffer.setReady(0);
+        }
+
+        // resume all coroutines waiting for state change
+        st.notify(Events::ENTER_OPENING);
+    }
+
+    return true;
+}
+
+void IpSocket_io_uring::close() {
+    if (socket_ == INVALID_SOCKET)
+        return;
+
+    // close socket
+    ::close(socket_);
+    socket_ = INVALID_SOCKET;
+
+    // set state
+    st.set(State::DISABLED);
+
+    // disable buffers
+    for (auto &buffer : buffers_) {
+        buffer.setDisabled();
+    }
+
+    // resume all coroutines waiting for state change
+    st.notify(Events::ENTER_CLOSING | Events::ENTER_DISABLED);
+}
+
+void IpSocket_io_uring::handle(io_uring_cqe &cqe) {
+    int result = cqe.res;
+    if (result == -EINPROGRESS) {
+        // connect is in progress
+    } else if (result < 0) {
+        // error
+        auto error = errno;
+        close();
+    } else if (result & POLLOUT) {
+        // connected
+
+        // set state
+        st.set(State::READY);
+
+        // start pending transfers
+        for (auto &buffer : transfers_) {
+            buffer.start();
+        }
+
+        // resume all coroutines waiting for state change
+        st.notify(Events::ENTER_READY);
+    }
+}
+
+
+// IpSocket_io_uring::Buffer
+
+IpSocket_io_uring::Buffer::Buffer(IpSocket_io_uring &device, int size)
+    : coco::Buffer(new uint8_t[size], size, device.st.state)
+    , device_(device)
+{
+    device.buffers_.add(*this);
+}
+
+IpSocket_io_uring::Buffer::~Buffer() {
+    delete [] data_;
+}
+
+bool IpSocket_io_uring::Buffer::start(Op op) {
+    if (st.state != State::READY || (op & Op::READ_WRITE) == 0 || size_ == 0) {
+        assert(st.state != State::BUSY);
+        return false;
+    }
+
+    // check if READ or WRITE flag is set
+    assert((op & Op::READ_WRITE) != 0);
+
+    op_ = op;
+
+    // add to list of pending transfers
+    device_.transfers_.add(*this);
+
+    // start if device is ready
+    if (device_.st.state == Device::State::READY)
+        start();
+
+    // set state
+    setBusy();
+
+    return true;
+}
+
+bool IpSocket_io_uring::Buffer::cancel() {
+    if (st.state != State::BUSY)
+        return false;
+
+    if ((op_ & Op::CANCEL) == 0) {
+        device_.loop_.cancel(this);
+        op_ |= Op::CANCEL;
+    }
+
+    return true;
+}
+
+void IpSocket_io_uring::Buffer::start() {
+    device_.loop_.submit((op_ & Op::WRITE) == 0 ? IORING_OP_RECV : IORING_OP_SEND,
+        device_.socket_, data_, size_, this);
+}
+
+void IpSocket_io_uring::Buffer::handle(io_uring_cqe &cqe) {
+    int transferred;
+    int result = cqe.res;
+    if (result >= 0) {
+        transferred = result;
+    } else {
+        // error
+        int error = -result;
+
+        // EMSGSIZE: datagram was larger than buffer (for UDP)
+        result_ = Result::FAIL;
+
+        transferred = 0;
+    }
+
+    // remove from list of active transfers
+    remove2();
+
+    // transfer finished
+    setReady(transferred);
+}
+
+} // namespace coco

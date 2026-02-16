@@ -1,7 +1,11 @@
 #include <coco/ip.hpp>
-#define NOMINMAX
-#include <Winsock2.h>
+
+#ifdef _WIN32
 #include <ws2tcpip.h>
+#endif
+#ifdef __linux__
+#include <arpa/inet.h>
+#endif
 
 
 namespace coco {

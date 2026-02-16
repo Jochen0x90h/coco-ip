@@ -18,8 +18,7 @@ IpSocket_Win32::IpSocket_Win32(Loop_Win32 &loop, int type, int protocol)
 
 IpSocket_Win32::~IpSocket_Win32() {
     closesocket(socket_);
-    WSACleanup();
-}
+ 
 
 int IpSocket_Win32::getBufferCount() {
     return buffers_.count();
@@ -43,7 +42,7 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
     // reuse address/port
     // https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ
     int reuse = 1;
-    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) == SOCKET_ERROR) {
+    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0) {
         //int e = WSAGetLastError();
         closesocket(socket);
         return false;
@@ -51,7 +50,7 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
 
     // bind to any local address/port (required by ConnectEx)
     sockaddr_in6 local = {.sin6_family = endpoint.protocolId, .sin6_port = htons(localPort)};
-    if (bind(socket, (sockaddr *)&local, sizeof(local)) == SOCKET_ERROR) {
+    if (bind(socket, (sockaddr *)&local, sizeof(local)) < 0) {
         int e = WSAGetLastError();
         closesocket(socket);
         return false;
@@ -72,7 +71,7 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
 
     if (type_ == SOCK_DGRAM) {
         // connect UDP
-        if (::connect(socket, (struct sockaddr *)&endpoint, size) == SOCKET_ERROR) {
+        if (::connect(socket, (struct sockaddr *)&endpoint, size) < 0) {
             int error = WSAGetLastError();
             closesocket(socket);
             return false;
@@ -90,6 +89,8 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
         // resume all coroutines waiting for state change
         st.notify(Events::ENTER_OPENING | Events::ENTER_READY);
     } else {
+        // connect TCP
+        
         // get pointer to ConnectEx function
         GUID ConnectExGuid = WSAID_CONNECTEX;
         LPFN_CONNECTEX ConnectEx = NULL;
@@ -123,9 +124,9 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
         // set state
         st.set(State::OPENING);
 
-        // enable buffers
+        // set buffers READY, transfers can be started but get submitted to the OS when the device becomes READY
         for (auto &buffer : buffers_) {
-            buffer.setReady();
+            buffer.setReady(0);
         }
 
         // resume all coroutines waiting for state change
@@ -204,7 +205,7 @@ IpSocket_Win32::Buffer::~Buffer() {
 }
 
 bool IpSocket_Win32::Buffer::start(Op op) {
-    if (st.state != State::READY) {
+    if (st.state != State::READY || (op & Op::READ_WRITE) == 0 || size_ == 0) {
         assert(st.state != State::BUSY);
         return false;
     }

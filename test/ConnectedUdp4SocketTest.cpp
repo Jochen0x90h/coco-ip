@@ -49,11 +49,11 @@ int main(int argc, char const **argv) {
 #else
 int main() {
 #endif
-    debug::out << "ConnectedUdp6SocketTest\n";
+    debug::out << "ConnectedUdp4SocketTest\n";
     debug::out << "Local port " << dec(localPort) << '\n';
     debug::out << "Remote port " << dec(remotePort) << '\n';
 
-    ip::v6::Endpoint endpoint = {.port = remotePort, .address = *ip::v6::Address::fromString("::1")};
+    ip::v4::Endpoint endpoint = {.port = remotePort, .address = *ip::v4::Address::fromString("127.0.0.1")};
     drivers.socket.connect(endpoint, localPort);
 
     sender(drivers.loop, drivers.buffer1);

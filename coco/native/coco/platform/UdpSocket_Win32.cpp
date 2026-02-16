@@ -14,7 +14,7 @@ UdpSocket_Win32::UdpSocket_Win32(Loop_Win32 &loop)
 }
 
 UdpSocket_Win32::~UdpSocket_Win32() {
-    WSACleanup();
+    closesocket(socket_);
 }
 
 bool UdpSocket_Win32::open(uint16_t protocolId, int localPort) {
@@ -31,7 +31,7 @@ bool UdpSocket_Win32::open(uint16_t protocolId, int localPort) {
     // reuse address/port
     // https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ
     int reuse = 1;
-    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) == SOCKET_ERROR) {
+    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0) {
         //int e = WSAGetLastError();
         closesocket(socket);
         return false;
@@ -39,7 +39,7 @@ bool UdpSocket_Win32::open(uint16_t protocolId, int localPort) {
 
     // bind to local port
     sockaddr_in6 ep = {.sin6_family = protocolId, .sin6_port = htons(localPort)};
-    if (bind(socket, (struct sockaddr*)&ep, sizeof(ep)) == SOCKET_ERROR) {
+    if (bind(socket, (struct sockaddr*)&ep, sizeof(ep)) < 0) {
         //int e = WSAGetLastError();
         closesocket(socket);
         return false;
@@ -138,7 +138,7 @@ UdpSocket_Win32::Buffer::~Buffer() {
 }
 
 bool UdpSocket_Win32::Buffer::start(Op op) {
-    if (st.state != State::READY) {
+    if (st.state != State::READY || (op & Op::READ_WRITE) == 0 || size_ == 0) {
         assert(st.state != State::BUSY);
         return false;
     }
