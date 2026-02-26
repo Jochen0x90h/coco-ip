@@ -20,7 +20,7 @@ if(${PLATFORM} STREQUAL "native" OR ${PLATFORM} STREQUAL "emu")
             native/coco/platform/ip.cpp
     )
     if(WIN32)
-        # Winsock2
+        # IOCP/Winsock2
         target_sources(${PROJECT_NAME}
             PUBLIC FILE_SET platform_headers FILES
                 native/coco/platform/IpSocket_Win32.hpp

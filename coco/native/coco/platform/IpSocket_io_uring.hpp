@@ -8,6 +8,8 @@
 
 namespace coco {
 
+/// @brief IP socket for TCP client and connected UDP using io_uring on Linux.
+///
 class IpSocket_io_uring : public IpSocket, public Loop_io_uring::CompletionHandler {
 public:
     /// @brief Constructor.
@@ -39,15 +41,14 @@ public:
         Buffer(IpSocket_io_uring &device, int size);
         ~Buffer() override;
 
-        bool start(Op op) override;
+        bool start() override;
         bool cancel() override;
 
     protected:
-        void start();
+        bool transfer();
         void handle(io_uring_cqe &cqe) override;
 
         IpSocket_io_uring &device_;
-        Op op_;
     };
 
 protected:
@@ -63,9 +64,6 @@ protected:
 
     // list of buffers
     IntrusiveList<Buffer> buffers_;
-
-    // pending transfers
-    IntrusiveList2<Buffer> transfers_;
 };
 
 } // namespace coco

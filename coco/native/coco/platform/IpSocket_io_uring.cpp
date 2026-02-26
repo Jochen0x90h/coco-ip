@@ -26,67 +26,71 @@ bool IpSocket_io_uring::connect(const ip::Endpoint &endpoint, int size, int loca
     if (socket_ != INVALID_SOCKET)
         return false;
 
-        // create socket
+    // create socket
     int socket = ::socket(endpoint.protocolId, type_ | SOCK_NONBLOCK, protocol_);
     if (socket == INVALID_SOCKET) {
-        int e = errno;
+        int error = errno;
+        setSystemError(errno);
         return false;
     }
+
+    int reuse = 1;
+    sockaddr_in6 local = {.sin6_family = endpoint.protocolId, .sin6_port = htons(localPort)};
 
     // reuse address/port
     // https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ
-    int reuse = 1;
-    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0) {
-        int e = errno;
-        ::close(socket);
-        return false;
-    }
+    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0)
+        goto error;
 
     // bind to any local address/port (required by ConnectEx)
-    sockaddr_in6 local = {.sin6_family = endpoint.protocolId, .sin6_port = htons(localPort)};
-    if (bind(socket, (sockaddr *)&local, sizeof(local)) < 0) {
-        int e = errno;
-        ::close(socket);
-        return false;
-    }
+    if (bind(socket, (sockaddr *)&local, sizeof(local)) < 0)
+        goto error;
 
+    Events events;
     if (type_ == SOCK_DGRAM) {
         // connect UDP
-        if (::connect(socket, (struct sockaddr *)&endpoint, size) < 0) {
-            int error = errno;           
+        if (::connect(socket, (struct sockaddr *)&endpoint, size) < 0)
+            goto error;
+        socket_ = socket;
+        setSuccess();
+
+        // set state
+        state_ = State::READY;
+
+        events = Events::ENTER_OPENING | Events::ENTER_READY;
+    } else {
+        // connect TCP
+        if (!loop_.connect(socket, endpoint, this)) {
+            // error: submit queue full
+            setError(std::errc::resource_unavailable_try_again);
             ::close(socket);
             return false;
         }
         socket_ = socket;
+        setSuccess();
 
         // set state
-        st.set(State::READY);
+        state_ = State::OPENING;
 
-        // enable buffers
-        for (auto &buffer : buffers_) {
-            buffer.setReady(0);
-        }
-
-        // resume all coroutines waiting for state change
-        st.notify(Events::ENTER_OPENING | Events::ENTER_READY);
-    } else {
-        // connect TCP
-        loop_.submitConnect(socket, &endpoint, this);
-        socket_ = socket;
-
-        // set state
-        st.set(State::OPENING);
-
-        // set buffers READY, transfers can be started but get submitted to the OS when the device becomes READY
-        for (auto &buffer : buffers_) {
-            buffer.setReady(0);
-        }
-
-        // resume all coroutines waiting for state change
-        st.notify(Events::ENTER_OPENING);
+        events = Events::ENTER_OPENING;
     }
 
+    // set buffers READY
+    // transfers can be started when device is OPENING, but get submitted to the OS when the device becomes READY
+    for (auto &buffer : buffers_) {
+        buffer.setSuccess(0);
+        buffer.setReady();
+    }
+
+    // resume all coroutines waiting for state change
+    notify(events);
+
     return true;
+error:
+    int error = errno;
+    setSystemError(errno);
+    ::close(socket);
+    return false;
 }
 
 void IpSocket_io_uring::close() {
@@ -96,9 +100,10 @@ void IpSocket_io_uring::close() {
     // close socket
     ::close(socket_);
     socket_ = INVALID_SOCKET;
+    setSuccess();
 
     // set state
-    st.set(State::DISABLED);
+    state_ = State::DISABLED;
 
     // disable buffers
     for (auto &buffer : buffers_) {
@@ -106,7 +111,7 @@ void IpSocket_io_uring::close() {
     }
 
     // resume all coroutines waiting for state change
-    st.notify(Events::ENTER_CLOSING | Events::ENTER_DISABLED);
+    .notify(Events::ENTER_CLOSING | Events::ENTER_DISABLED);
 }
 
 void IpSocket_io_uring::handle(io_uring_cqe &cqe) {
@@ -115,21 +120,34 @@ void IpSocket_io_uring::handle(io_uring_cqe &cqe) {
         // connect is in progress
     } else if (result < 0) {
         // error
+        // ECANCELED: cancelled
+        // ECONNREFUSED: connection refused
         auto error = errno;
-        close();
+        setSystemError(error);
+
+        // close socket
+        ::close(socket_);
+        socket_ = INVALID_SOCKET;
+
+        // set state
+        state_ = State::DISABLED;
+
+        // resume all coroutines waiting for state change
+        notify(Events::ENTER_DISABLED);
+
     } else if (result & POLLOUT) {
         // connected
 
         // set state
-        st.set(State::READY);
+        state_ = State::READY;
 
-        // start pending transfers
+        // submit pending transfers
         for (auto &buffer : transfers_) {
-            buffer.start();
+            buffer.submit();
         }
 
         // resume all coroutines waiting for state change
-        st.notify(Events::ENTER_READY);
+        notify(Events::ENTER_READY);
     }
 }
 
@@ -137,7 +155,7 @@ void IpSocket_io_uring::handle(io_uring_cqe &cqe) {
 // IpSocket_io_uring::Buffer
 
 IpSocket_io_uring::Buffer::Buffer(IpSocket_io_uring &device, int size)
-    : coco::Buffer(new uint8_t[size], size, device.st.state)
+    : coco::Buffer(new uint8_t[size], size, device.state_)
     , device_(device)
 {
     device.buffers_.add(*this);
@@ -147,67 +165,85 @@ IpSocket_io_uring::Buffer::~Buffer() {
     delete [] data_;
 }
 
-bool IpSocket_io_uring::Buffer::start(Op op) {
-    if (st.state != State::READY || (op & Op::READ_WRITE) == 0 || size_ == 0) {
-        assert(st.state != State::BUSY);
+bool IpSocket_io_uring::Buffer::start() {
+    if (state_ != State::READY || (op_ & Op::READ_WRITE) == 0 || size_ == 0) {
+        assert(state_ != State::BUSY);
+        setSuccess(0);
         return false;
     }
 
-    // check if READ or WRITE flag is set
-    assert((op & Op::READ_WRITE) != 0);
-
-    op_ = op;
+    // store read/write flags for use in transfer(), handle() and cancel()
+    steps_ = uint8_t(op_ & Op::READ_WRITE);
 
     // add to list of pending transfers
     device_.transfers_.add(*this);
 
-    // start if device is ready
-    if (device_.st.state == Device::State::READY)
-        start();
+    // start transfer
+    if (!transfer())
+        return false;
 
     // set state
     setBusy();
-
     return true;
 }
 
 bool IpSocket_io_uring::Buffer::cancel() {
-    if (st.state != State::BUSY)
+    if (state_ != State::BUSY)
         return false;
 
-    if ((op_ & Op::CANCEL) == 0) {
-        device_.loop_.cancel(this);
-        op_ |= Op::CANCEL;
+    if (steps_ != 0) {
+        if (!device_.loop_.cancel(this)) {
+            // error: submit buffer full
+            setError(std::errc::resource_unavailable_try_again);
+            return false;
+        }
+        steps_ = 0;
     }
-
     return true;
 }
 
-void IpSocket_io_uring::Buffer::start() {
-    device_.loop_.submit((op_ & Op::WRITE) == 0 ? IORING_OP_RECV : IORING_OP_SEND,
-        device_.socket_, data_, size_, this);
+bool IpSocket_io_uring::Buffer::transfer() {
+    if (!device_.loop_.submit((Op(steps_) & Op::WRITE) == 0 ? IORING_OP_RECV : IORING_OP_SEND,
+        device_.socket_, data_, size_, this))
+    {
+        // error: submit queue full
+        setError(std::errc::resource_unavailable_try_again);
+        setReady();
+        return false;
+    }
+    return true;
 }
 
 void IpSocket_io_uring::Buffer::handle(io_uring_cqe &cqe) {
-    int transferred;
     int result = cqe.res;
     if (result >= 0) {
-        transferred = result;
+        // success
+        int transferred = result;
+
+        // check for connection closed by peer
+        if (Op(steps_) == Op::READ && transferred == 0) {
+            device_.close();
+            return;
+        }
+
+        // check for read after write
+        if (Op(steps_) == Op::READ_WRITE) {
+            steps_ = int(Op::READ);
+            transfer();
+            return;
+        }
+
+        setSuccess(transferred);
     } else {
         // error
-        int error = -result;
-
+        // ECANCELED: cancelled
         // EMSGSIZE: datagram was larger than buffer (for UDP)
-        result_ = Result::FAIL;
-
-        transferred = 0;
+        int error = -result;
+        setSystemError(error);
     }
 
-    // remove from list of active transfers
-    remove2();
-
     // transfer finished
-    setReady(transferred);
+    setReady();
 }
 
 } // namespace coco

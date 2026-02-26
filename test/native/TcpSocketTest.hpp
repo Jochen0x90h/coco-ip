@@ -9,8 +9,7 @@ using namespace coco;
 struct Drivers {
     Loop_native loop;
     IpSocket_native socket{loop, SOCK_STREAM, IPPROTO_TCP};
-    IpSocket_native::Buffer buffer1{socket, 128};
-    IpSocket_native::Buffer buffer2{socket, 128};
+    IpSocket_native::Buffer buffer{socket, 1024};
 };
 
 Drivers drivers;

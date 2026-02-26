@@ -1,10 +1,6 @@
 #include <coco/convert.hpp>
 #include <coco/debug.hpp>
 #include "ConnectedUdpSocketTest.hpp"
-#ifdef NATIVE
-//#include <string>
-//#include <iostream>
-#endif
 
 
 /*
@@ -17,9 +13,7 @@ Coroutine sender(Loop &loop, Buffer &buffer) {
     const uint8_t data[] = {1, 2, 3, 4};
     while (true) {
         co_await buffer.writeArray(data);
-#ifndef NATIVE
         debug::toggleRed();
-#endif
         debug::out << "Sent " << dec(buffer.size()) << '\n';
         co_await loop.sleep(1s);
     }
@@ -28,9 +22,7 @@ Coroutine sender(Loop &loop, Buffer &buffer) {
 Coroutine receiver(Loop &loop, Buffer &buffer) {
     while (true) {
         co_await buffer.read();
-#ifndef NATIVE
         debug::toggleGreen();
-#endif
         debug::out << "Received " << dec(buffer.size()) << '\n';
     }
 }
@@ -43,8 +35,8 @@ uint16_t remotePort = 1337;
 #ifdef NATIVE
 int main(int argc, char const **argv) {
     if (argc >= 3) {
-        localPort = std::stoi(argv[1]);
-        remotePort = std::stoi(argv[2]);
+        localPort = *dec<int>(argv[1]);
+        remotePort = *dec<int>(argv[2]);
     }
 #else
 int main() {

@@ -1,7 +1,7 @@
 #include "IpSocket_Win32.hpp"
 #include <ws2tcpip.h>
 #include <mswsock.h>
-#include <iostream>
+//#include <iostream>
 
 
 namespace coco {
@@ -18,7 +18,7 @@ IpSocket_Win32::IpSocket_Win32(Loop_Win32 &loop, int type, int protocol)
 
 IpSocket_Win32::~IpSocket_Win32() {
     closesocket(socket_);
- 
+}
 
 int IpSocket_Win32::getBufferCount() {
     return buffers_.count();
@@ -32,65 +32,59 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
     if (socket_ != INVALID_SOCKET)
         return false;
 
-        // create socket
+    // create socket
     SOCKET socket = WSASocket(endpoint.protocolId, type_, protocol_, nullptr, 0, WSA_FLAG_OVERLAPPED);
     if (socket == INVALID_SOCKET) {
-        int e = WSAGetLastError();
+        int error = WSAGetLastError();
+        setSystemError(error);
         return false;
     }
+
+    int reuse = 1;
+    sockaddr_in6 local = {.sin6_family = endpoint.protocolId, .sin6_port = htons(localPort)};
 
     // reuse address/port
     // https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ
-    int reuse = 1;
-    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0) {
-        //int e = WSAGetLastError();
-        closesocket(socket);
-        return false;
-    }
+    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0)
+        goto error;
 
     // bind to any local address/port (required by ConnectEx)
-    sockaddr_in6 local = {.sin6_family = endpoint.protocolId, .sin6_port = htons(localPort)};
-    if (bind(socket, (sockaddr *)&local, sizeof(local)) < 0) {
-        int e = WSAGetLastError();
-        closesocket(socket);
-        return false;
-    }
+    if (bind(socket, (sockaddr *)&local, sizeof(local)) < 0)
+        goto error;
 
     // add socket to completion port of event loop
-    Loop_Win32::CompletionHandler *handler = this;
     if (CreateIoCompletionPort(
         (HANDLE)socket,
         loop_.port,
-        ULONG_PTR(handler),
+        ULONG_PTR(static_cast<Loop_Win32::CompletionHandler *>(this)),
         0) == nullptr)
     {
-        int e = WSAGetLastError();
-        closesocket(socket);
-        return false;
+        goto error;
     }
 
+    Events events;
     if (type_ == SOCK_DGRAM) {
         // connect UDP
-        if (::connect(socket, (struct sockaddr *)&endpoint, size) < 0) {
-            int error = WSAGetLastError();
-            closesocket(socket);
-            return false;
-        }
+        if (::connect(socket, (struct sockaddr *)&endpoint, size) < 0)
+            goto error;
+
         socket_ = socket;
+        setSuccess();
 
         // set state
-        st.set(State::READY);
+        state_ = State::READY;
 
-        // enable buffers
+        // set buffers READY
+        // transfers can be started when device is OPENING, but get submitted to the OS when the device becomes READY
         for (auto &buffer : buffers_) {
-            buffer.setReady(0);
+            buffer.setSuccess(0);
+            buffer.setReady();
         }
 
-        // resume all coroutines waiting for state change
-        st.notify(Events::ENTER_OPENING | Events::ENTER_READY);
+        events = Events::ENTER_OPENING | Events::ENTER_READY;
     } else {
         // connect TCP
-        
+
         // get pointer to ConnectEx function
         GUID ConnectExGuid = WSAID_CONNECTEX;
         LPFN_CONNECTEX ConnectEx = NULL;
@@ -100,9 +94,7 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
             &ConnectEx, sizeof(ConnectEx),
             &transferred, NULL, NULL) != 0)
         {
-            int error = WSAGetLastError();
-            closesocket(socket);
-            return false;
+            goto error;
         }
 
         // connect TCP
@@ -114,26 +106,30 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
         {
             int error = WSAGetLastError();
             if (error != ERROR_IO_PENDING) {
-                // "real" error
+                // error
+                setSystemError(error);
                 closesocket(socket);
                 return false;
             }
         }
         socket_ = socket;
+        setSuccess();
 
         // set state
-        st.set(State::OPENING);
+        state_ = State::OPENING;
 
-        // set buffers READY, transfers can be started but get submitted to the OS when the device becomes READY
-        for (auto &buffer : buffers_) {
-            buffer.setReady(0);
-        }
-
-        // resume all coroutines waiting for state change
-        st.notify(Events::ENTER_OPENING);
+        events = Events::ENTER_OPENING;
     }
 
+    // resume all coroutines waiting for state change
+    notify(events);
+
     return true;
+error:
+    int error = WSAGetLastError();
+    setSystemError(error);
+    closesocket(socket);
+    return false;
 }
 
 void IpSocket_Win32::close() {
@@ -143,9 +139,10 @@ void IpSocket_Win32::close() {
     // close socket
     closesocket(socket_);
     socket_ = INVALID_SOCKET;
+    setSuccess();
 
     // set state
-    st.set(State::DISABLED);
+    state_ = State::DISABLED;
 
     // disable buffers
     for (auto &buffer : buffers_) {
@@ -153,7 +150,7 @@ void IpSocket_Win32::close() {
     }
 
     // resume all coroutines waiting for state change
-    st.notify(Events::ENTER_CLOSING | Events::ENTER_DISABLED);
+    notify(Events::ENTER_CLOSING | Events::ENTER_DISABLED);
 }
 
 void IpSocket_Win32::handle(OVERLAPPED *overlapped) {
@@ -163,25 +160,40 @@ void IpSocket_Win32::handle(OVERLAPPED *overlapped) {
         DWORD flags;
         auto result = WSAGetOverlappedResult(socket_, overlapped, &transferred, false, &flags);
         if (!result) {
-            // "real" error or cancelled (ERROR_OPERATION_ABORTED): close
+            // error
+            // ERROR_OPERATION_ABORTED: cancelled
+            // ERROR_CONNECTION_REFUSED: connection refused
             auto error = WSAGetLastError();
-            close();
+            setSystemError(error);
+
+            // close socket
+            closesocket(socket_);
+            socket_ = INVALID_SOCKET;
+
+            // set state
+            state_ = State::DISABLED;
+
+            // resume all coroutines waiting for state change
+            notify(Events::ENTER_DISABLED);
         } else {
             setsockopt(socket_, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, NULL, 0);
 
             // set state
-            st.set(State::READY);
+            state_ = State::READY;
 
-            // start pending transfers
-            for (auto &buffer : transfers_) {
-                buffer.start();
+            // set buffers READY
+            // transfers can be started when device is OPENING, but get submitted to the OS when the device becomes READY
+            for (auto &buffer : buffers_) {
+                buffer.setSuccess(0);
+                buffer.setReady();
             }
 
             // resume all coroutines waiting for state change
-            st.notify(Events::ENTER_READY);
+            notify(Events::ENTER_READY);
         }
     } else {
-        for (auto &buffer : transfers_) {
+        // search the buffer that caused the event
+        for (auto &buffer : buffers_) {
             if (overlapped == &buffer.overlapped_) {
                 buffer.handle(overlapped);
                 break;
@@ -194,7 +206,7 @@ void IpSocket_Win32::handle(OVERLAPPED *overlapped) {
 // IpSocket_Win32::Buffer
 
 IpSocket_Win32::Buffer::Buffer(IpSocket_Win32 &device, int size)
-    : coco::Buffer(new uint8_t[size], size, device.st.state)
+    : coco::Buffer(new uint8_t[size], size, device.state_)
     , device_(device)
 {
     device.buffers_.add(*this);
@@ -204,49 +216,49 @@ IpSocket_Win32::Buffer::~Buffer() {
     delete [] data_;
 }
 
-bool IpSocket_Win32::Buffer::start(Op op) {
-    if (st.state != State::READY || (op & Op::READ_WRITE) == 0 || size_ == 0) {
-        assert(st.state != State::BUSY);
+bool IpSocket_Win32::Buffer::start() {
+    if (state_ != State::READY || (op_ & Op::READ_WRITE) == 0 || size_ == 0) {
+        assert(state_ != State::BUSY);
+        setSuccess(0);
         return false;
     }
 
-    // check if READ or WRITE flag is set
-    assert((op & Op::READ_WRITE) != 0);
+    // store read/write flags for use in transfer(), handle() and cancel()
+    steps_ = uint8_t(op_ & Op::READ_WRITE);
 
-    op_ = op;
-
-    // add to list of pending transfers
-    device_.transfers_.add(*this);
-
-    // start if device is ready
-    if (device_.st.state == Device::State::READY)
-        start();
+    // start transfer
+    if (!transfer())
+        return false;
 
     // set state
     setBusy();
-
     return true;
 }
 
 bool IpSocket_Win32::Buffer::cancel() {
-    if (st.state != State::BUSY)
+    if (state_ != State::BUSY)
         return false;
 
-    auto result = CancelIoEx((HANDLE)device_.socket_, &overlapped_);
-    if (!result) {
-        auto e = WSAGetLastError();
-        std::cerr << "cancel error " << e << std::endl;
+    if (steps_ != 0) {
+        auto result = CancelIoEx((HANDLE)device_.socket_, &overlapped_);
+        if (!result) {
+            // error
+            auto error = WSAGetLastError();
+            setSystemError(error);
+            //debug::out << "cancel error " << dec(e) << '\n';
+            return false;
+        }
+        steps_ = 0;
     }
-
     return true;
 }
 
-void IpSocket_Win32::Buffer::start() {
+bool IpSocket_Win32::Buffer::transfer() {
     // initialize overlapped
     memset(&overlapped_, 0, sizeof(OVERLAPPED));
 
     int result;
-    if ((op_ & Op::WRITE) == 0) {
+    if ((Op(steps_) & Op::WRITE) == 0) {
         // receive
         WSABUF buffer{capacity_, (CHAR*)data_};
         DWORD flags = 0;
@@ -259,27 +271,45 @@ void IpSocket_Win32::Buffer::start() {
     if (result != 0) {
         int error = WSAGetLastError();
         if (error != WSA_IO_PENDING) {
-            // "real" error
-            setReady(0);
+            // error
+            setSystemError(error);
+            setReady();
+            return false;
         }
     }
+    return true;
 }
 
 void IpSocket_Win32::Buffer::handle(OVERLAPPED *overlapped) {
     DWORD transferred;
     DWORD flags;
     auto result = WSAGetOverlappedResult(device_.socket_, overlapped, &transferred, false, &flags);
-    if (!result) {
-        // "real" error or cancelled (ERROR_OPERATION_ABORTED): return zero size
+    if (result) {
+        // success
+
+        // check for connection closed by peer
+        if (Op(steps_) == Op::READ && transferred == 0) {
+            device_.close();
+            return;
+        }
+
+        // check for read after write
+        if (Op(steps_) == Op::READ_WRITE) {
+            steps_ = int(Op::READ);
+            transfer();
+            return;
+        }
+
+        setSuccess(transferred);
+    } else {
+        // error
+        // ERROR_OPERATION_ABORTED: cancelled
         auto error = WSAGetLastError();
-        transferred = 0;
+        setSystemError(error);
     }
 
-    // remove from list of active transfers
-    remove2();
-
     // transfer finished
-    setReady(transferred);
+    setReady();
 }
 
 } // namespace coco

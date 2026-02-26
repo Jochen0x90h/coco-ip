@@ -2,20 +2,16 @@
 
 #include <coco/String.hpp>
 #include <optional>
-#ifdef _WIN32
-#define NOMINMAX
-#define WIN32_LEAN_AND_MEAN
+#if defined(_WIN32)
+#include <coco/platform/WindowsDef.hpp>
 #include <winsock2.h> // see https://learn.microsoft.com/en-us/windows/win32/winsock/creating-a-basic-winsock-application
 #include <Windows.h>
-#undef interface
-#undef INTERFACE
-#undef IN
-#undef OUT
-#undef READ_ATTRIBUTES
-#undef ERROR
-#endif
-#ifdef __linux__
+#include <coco/platform/WindowsUndef.hpp>
+#elif defined(__linux__)
 #include <sys/socket.h>
+#else
+constexpr int AF_INET = 1;
+constexpr int AF_INET6 = 2;
 #endif
 
 
@@ -123,7 +119,13 @@ constexpr uint32_t hostToNetwork(uint32_t x) {
 namespace v4 {
 
 /// @brief IPv4 protocol ID
-constexpr uint16_t PROTOCOL_ID = AF_INET;
+constexpr uint16_t PROTOCOL_ID =
+#if defined(_WIN32) || defined(__linux__)
+    AF_INET;
+#else
+    2;
+#endif
+
 
 union Address {
     uint8_t u8[4];
@@ -162,7 +164,12 @@ struct Endpoint {
 namespace v6 {
 
 /// @brief IPv6 protocol ID
-constexpr uint16_t PROTOCOL_ID = AF_INET6;
+constexpr uint16_t PROTOCOL_ID =
+#if defined(_WIN32) || defined(__linux__)
+    AF_INET6;
+#else
+    2;
+#endif
 
 
 union Address {

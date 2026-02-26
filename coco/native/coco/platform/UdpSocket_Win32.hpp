@@ -3,10 +3,13 @@
 #include <coco/UdpSocket.hpp>
 #include <coco/IntrusiveList.hpp>
 #include <coco/platform/Loop_native.hpp>
+#include <ws2tcpip.h> // sockaddr_in6
 
 
 namespace coco {
 
+/// @brief UDP message socket using IO completion ports on Windows.
+///
 class UdpSocket_Win32 : public UdpSocket, public Loop_Win32::CompletionHandler {
 public:
     /// @brief Constructor.
@@ -31,18 +34,18 @@ public:
 
     /// @brief Buffer for transferring data to/from a file.
     ///
-    class Buffer : public coco::Buffer, public IntrusiveListNode, public IntrusiveListNode2 {
+    class Buffer : public coco::Buffer, public IntrusiveListNode {//, public IntrusiveListNode2 {
         friend class UdpSocket_Win32;
     public:
         Buffer(UdpSocket_Win32 &device, int size);
         ~Buffer() override;
 
         // Buffer methods
-        bool start(Op op) override;
+        bool start() override;
         bool cancel() override;
 
     protected:
-        void start();
+        bool transfer();
         void handle(OVERLAPPED *overlapped);
 
         UdpSocket_Win32 &device_;
@@ -53,7 +56,6 @@ public:
         } endpoint_;
         INT endpointSize_;
         OVERLAPPED overlapped_;
-        Op op_;
     };
 
 protected:
@@ -66,9 +68,6 @@ protected:
 
     // list of buffers
     IntrusiveList<Buffer> buffers_;
-
-    // pending transfers
-    IntrusiveList2<Buffer> transfers_;
 };
 
 } // namespace coco

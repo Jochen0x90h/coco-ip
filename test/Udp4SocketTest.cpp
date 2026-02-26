@@ -1,10 +1,6 @@
 #include <coco/convert.hpp>
 #include <coco/debug.hpp>
 #include "UdpSocketTest.hpp"
-#ifdef NATIVE
-#include <string>
-#include <iostream>
-#endif
 
 
 /*
@@ -39,8 +35,8 @@ uint16_t remotePort = 1337;
 #ifdef NATIVE
 int main(int argc, char const **argv) {
     if (argc >= 3) {
-        localPort = std::stoi(argv[1]);
-        remotePort = std::stoi(argv[2]);
+        localPort = *dec<int>(argv[1]);
+        remotePort = *dec<int>(argv[2]);
     }
 #else
 int main() {

@@ -8,6 +8,8 @@
 
 namespace coco {
 
+/// @brief UDP message socket using io_uring on Linux.
+///
 class UdpSocket_io_uring : public UdpSocket {
 public:
     /// @brief Constructor.
@@ -38,11 +40,11 @@ public:
         ~Buffer() override;
 
         // Buffer methods
-        bool start(Op op) override;
+        bool start() override;
         bool cancel() override;
 
     protected:
-        void start();
+        bool transfer();
         void handle(io_uring_cqe &cqe) override;
 
         UdpSocket_io_uring &device_;
@@ -53,7 +55,6 @@ public:
         } endpoint_;
         iovec buffer_;
         msghdr message_;
-        Op op_;
     };
 
 protected:
@@ -67,9 +68,6 @@ protected:
 
     // list of buffers
     IntrusiveList<Buffer> buffers_;
-
-    // pending transfers
-    IntrusiveList2<Buffer> transfers_;
 };
 
 } // namespace coco

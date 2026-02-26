@@ -7,6 +7,8 @@
 
 namespace coco {
 
+/// @brief IP socket for TCP client and connected UDP using IO completion ports on Windows.
+///
 class IpSocket_Win32 : public IpSocket, public Loop_Win32::CompletionHandler {
 public:
     /// @brief Constructor.
@@ -33,22 +35,21 @@ public:
 
     /// @brief Buffer for transferring data to/from a TCP socket.
     ///
-    class Buffer : public coco::Buffer, public IntrusiveListNode, public IntrusiveListNode2 {
+    class Buffer : public coco::Buffer, public IntrusiveListNode {
         friend class IpSocket_Win32;
     public:
         Buffer(IpSocket_Win32 &device, int size);
         ~Buffer() override;
 
-        bool start(Op op) override;
+        bool start() override;
         bool cancel() override;
 
     protected:
-        void start();
+        bool transfer();
         void handle(OVERLAPPED *overlapped);
 
         IpSocket_Win32 &device_;
         OVERLAPPED overlapped_;
-        Op op_;
     };
 
 protected:
@@ -64,9 +65,6 @@ protected:
 
     // list of buffers
     IntrusiveList<Buffer> buffers_;
-
-    // pending transfers
-    IntrusiveList2<Buffer> transfers_;
 };
 
 } // namespace coco

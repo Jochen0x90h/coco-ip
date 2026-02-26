@@ -1,10 +1,6 @@
 #include <coco/convert.hpp>
 #include <coco/debug.hpp>
 #include "TcpSocketTest.hpp"
-#ifdef NATIVE
-//#include <string>
-//#include <iostream>
-#endif
 
 
 /*
@@ -12,30 +8,39 @@
     Then start this test.
 */
 
-Coroutine sender(Loop &loop, Buffer &buffer) {
-    const uint8_t data[] = {1, 2, 3, 4};
-    while (true) {
-        co_await buffer.writeArray(data);
-#ifndef NATIVE
-        debug::toggleRed();
-#endif
-        debug::out << "Sent " << dec(buffer.size()) << '\n';
-        co_await loop.sleep(1s);
+Coroutine request(Loop &loop, IpSocket &socket, Buffer &buffer) {
+    // wait until connected
+    co_await socket.untilReadyOrDisabled();
+    if (!socket.ready()) {
+        // error: probably no server running on the given port
+        debug::out << "Error: " << socket.error().message() << '\n';
+        loop.exit();
+        co_return;
     }
-}
 
-Coroutine receiver(Loop &loop, Buffer &buffer) {
+    // sent request
+    co_await buffer.write("GET / HTTP/1.1\r\nHost: localhost:8000\r\nConnection: close\r\n\r\n");
+
     while (true) {
-        int s = co_await select(buffer.read(), loop.sleep(1s));
+        // wait for reply
+        int s = co_await select(buffer.read(), loop.sleep(2s));
         if (s == 1) {
             debug::toggleGreen();
-            debug::out << "Received " << dec(buffer.size()) << " from port " << dec(int(buffer.header<ip::Endpoint>().v4.port)) << '\n';
+            if (socket.ready()) {
+                debug::out << buffer.string() << '\n';
+            } else {
+                debug::out << "Socket closed by peer\n";
+                break;
+            }
         } else {
             // timeout
-            debug::out << "Timeout: Cancel\n";
+            debug::out << "Timeout: Cancel and close\n";
             co_await buffer.acquire();
+            socket.close();
+            break;
         }
     }
+    loop.exit();
 }
 
 
@@ -44,7 +49,7 @@ uint16_t port = 8000;
 #ifdef NATIVE
 int main(int argc, char const **argv) {
     if (argc >= 2) {
-        port = std::stoi(argv[1]);
+        port = *dec<int>(argv[1]);
     }
 #else
 int main() {
@@ -53,10 +58,12 @@ int main() {
     debug::out << "Port " << dec(port) << '\n';
 
     ip::v4::Endpoint endpoint = {.port = port, .address = *ip::v4::Address::fromString("127.0.0.1")};
-    drivers.socket.connect(endpoint);
+    if (!drivers.socket.connect(endpoint)) {
+        debug::out << "Connect failed\n";
+        return 1;
+    }
 
-    //sender(drivers.loop, drivers.buffer1);
-    receiver(drivers.loop, drivers.buffer2);
+    request(drivers.loop, drivers.socket, drivers.buffer);
 
     drivers.loop.run();
 }
