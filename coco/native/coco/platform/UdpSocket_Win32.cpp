@@ -144,7 +144,7 @@ UdpSocket_Win32::Buffer::~Buffer() {
 bool UdpSocket_Win32::Buffer::start() {
     if (state_ != State::READY || (op_ & Op::READ_WRITE) == 0 || size_ == 0) {
         assert(state_ != State::BUSY);
-        setSuccess(0);
+        setSuccess();
         return false;
     }
 
@@ -202,7 +202,7 @@ bool UdpSocket_Win32::Buffer::transfer() {
         int error = WSAGetLastError();
         if (error != WSA_IO_PENDING) {
             // error
-            // WSAECONNRESET = 10054: nobody listens on the other end
+            // nobody listens on the other end: WSAECONNRESET = 10054
             setSystemError(error);
             setReady();
             return false;
@@ -225,7 +225,7 @@ void UdpSocket_Win32::Buffer::handle(OVERLAPPED *overlapped) {
         setSuccess(transferred);
     } else {
         // error
-        // ERROR_OPERATION_ABORTED: cancelled
+        // canceled: ERROR_OPERATION_ABORTED
         auto error = WSAGetLastError();
         setSystemError(error);
     }

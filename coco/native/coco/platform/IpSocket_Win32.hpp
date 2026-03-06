@@ -20,18 +20,6 @@ public:
 
     ~IpSocket_Win32() override;
 
-    // TcpSocket methods
-    bool connect(const ip::Endpoint &endpoint, int size = sizeof(ip::Endpoint), int localPort = 0) override;
-    using IpSocket::connect;
-
-    // BufferDevice methods
-    class Buffer;
-    int getBufferCount() override;
-    Buffer &getBuffer(int index) override;
-
-    // Device methods
-    void close() override;
-
 
     /// @brief Buffer for transferring data to/from a TCP socket.
     ///
@@ -51,6 +39,18 @@ public:
         IpSocket_Win32 &device_;
         OVERLAPPED overlapped_;
     };
+
+
+    // TcpSocket methods
+    bool connect(const ip::Endpoint &endpoint, int size = sizeof(ip::Endpoint), int localPort = 0) override;
+    using IpSocket::connect;
+
+    // BufferDevice methods
+    int getBufferCount() override;
+    Buffer &getBuffer(int index) override;
+
+    // Device methods
+    void close() override;
 
 protected:
     void handle(OVERLAPPED *overlapped) override;

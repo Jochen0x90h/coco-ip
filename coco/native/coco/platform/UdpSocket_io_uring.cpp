@@ -122,7 +122,7 @@ UdpSocket_io_uring::Buffer::~Buffer() {
 bool UdpSocket_io_uring::Buffer::start() {
     if (state_ != State::READY || (op_ & Op::READ_WRITE) == 0 || size_ == 0) {
         assert(state_ != State::BUSY);
-        setSuccess(0);
+        setSuccess();
         return false;
     }
 

@@ -18,18 +18,6 @@ public:
 
     ~UdpSocket_io_uring() override;
 
-    // UdpSocket methods
-    bool open(uint16_t protocolId, int localPort) override;
-    bool join(ip::v6::Address const &multicastGroup) override;
-
-    // BufferDevice methods
-    class Buffer;
-    int getBufferCount() override;
-    Buffer &getBuffer(int index) override;
-
-    // Device methods
-    void close() override;
-
 
     /// @brief Buffer for transferring data to/from a file.
     ///
@@ -57,7 +45,19 @@ public:
         msghdr message_;
     };
 
-protected:
+
+    // UdpSocket methods
+    bool open(uint16_t protocolId, int localPort) override;
+    bool join(ip::v6::Address const &multicastGroup) override;
+
+    // BufferDevice methods
+    int getBufferCount() override;
+    Buffer &getBuffer(int index) override;
+
+    // Device methods
+    void close() override;
+
+    protected:
     //void handle(io_uring_cqe &cqe) override;
 
     Loop_io_uring &loop_;

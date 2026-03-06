@@ -19,18 +19,6 @@ public:
 
     ~UdpSocket_Win32() override;
 
-    // UdpSocket methods
-    bool open(uint16_t protocolId, int localPort) override;
-    bool join(ip::v6::Address const &multicastGroup) override;
-
-    // BufferDevice methods
-    class Buffer;
-    int getBufferCount() override;
-    Buffer &getBuffer(int index) override;
-
-    // Device methods
-    void close() override;
-
 
     /// @brief Buffer for transferring data to/from a file.
     ///
@@ -57,6 +45,18 @@ public:
         INT endpointSize_;
         OVERLAPPED overlapped_;
     };
+
+
+    // UdpSocket methods
+    bool open(uint16_t protocolId, int localPort) override;
+    bool join(ip::v6::Address const &multicastGroup) override;
+
+    // BufferDevice methods
+    int getBufferCount() override;
+    Buffer &getBuffer(int index) override;
+
+    // Device methods
+    void close() override;
 
 protected:
     void handle(OVERLAPPED *overlapped) override;

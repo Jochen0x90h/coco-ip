@@ -219,7 +219,7 @@ IpSocket_Win32::Buffer::~Buffer() {
 bool IpSocket_Win32::Buffer::start() {
     if (state_ != State::READY || (op_ & Op::READ_WRITE) == 0 || size_ == 0) {
         assert(state_ != State::BUSY);
-        setSuccess(0);
+        setSuccess();
         return false;
     }
 
@@ -303,7 +303,7 @@ void IpSocket_Win32::Buffer::handle(OVERLAPPED *overlapped) {
         setSuccess(transferred);
     } else {
         // error
-        // ERROR_OPERATION_ABORTED: cancelled
+        // canceled: ERROR_OPERATION_ABORTED
         auto error = WSAGetLastError();
         setSystemError(error);
     }
