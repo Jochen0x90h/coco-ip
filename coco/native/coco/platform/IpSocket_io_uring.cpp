@@ -57,6 +57,11 @@ bool IpSocket_io_uring::connect(const ip::Endpoint &endpoint, int size, int loca
         // set state
         state_ = State::READY;
 
+        // set buffers READY
+        for (auto &buffer : buffers_) {
+            buffer.setReady();
+        }
+
         events = Events::ENTER_OPENING | Events::ENTER_READY;
     } else {
         // connect TCP
@@ -73,13 +78,6 @@ bool IpSocket_io_uring::connect(const ip::Endpoint &endpoint, int size, int loca
         state_ = State::OPENING;
 
         events = Events::ENTER_OPENING;
-    }
-
-    // set buffers READY
-    // transfers can be started when device is OPENING, but get submitted to the OS when the device becomes READY
-    for (auto &buffer : buffers_) {
-        buffer.setSuccess(0);
-        buffer.setReady();
     }
 
     // resume all coroutines waiting for state change
@@ -141,9 +139,9 @@ void IpSocket_io_uring::handle(io_uring_cqe &cqe) {
         // set state
         state_ = State::READY;
 
-        // submit pending transfers
-        for (auto &buffer : transfers_) {
-            buffer.submit();
+        // set buffers READY
+        for (auto &buffer : buffers_) {
+            buffer.setReady();
         }
 
         // resume all coroutines waiting for state change
@@ -166,8 +164,12 @@ IpSocket_io_uring::Buffer::~Buffer() {
 }
 
 bool IpSocket_io_uring::Buffer::start() {
-    if (state_ != State::READY || (op_ & Op::READ_WRITE) == 0 || size_ == 0) {
-        assert(state_ != State::BUSY);
+    if (state_ != State::READY) {
+        assert(false);
+        setError(std::errc::resource_unavailable_try_again);
+        return false;
+    }
+    if ((op_ & Op::READ_WRITE) == 0 || size_ == 0) {
         setSuccess();
         return false;
     }

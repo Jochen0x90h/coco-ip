@@ -12,7 +12,7 @@
 Coroutine sender(Loop &loop, Buffer &buffer) {
     const uint8_t data[] = {1, 2, 3, 4};
     while (true) {
-        co_await buffer.writeArray(data);
+        co_await buffer.write(data);
         debug::toggleRed();
         debug::out << "Sent " << dec(buffer.size()) << " to port " << dec(int(buffer.header<ip::Endpoint>().v6.port)) << '\n';
         co_await loop.sleep(1s);

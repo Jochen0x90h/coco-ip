@@ -45,7 +45,7 @@ bool UdpSocket_Win32::open(uint16_t protocolId, int localPort) {
     if (CreateIoCompletionPort(
         (HANDLE)socket,
         loop_.port,
-        ULONG_PTR(static_cast<Loop_Win32::CompletionHandler *>(this)),
+        ULONG_PTR(&static_cast<Loop_Win32::CompletionHandler &>(*this)),
         0) == nullptr)
     {
         goto error;
@@ -58,7 +58,6 @@ bool UdpSocket_Win32::open(uint16_t protocolId, int localPort) {
 
     // enable buffers
     for (auto &buffer : buffers_) {
-        buffer.setSuccess(0);
         buffer.setReady();
     }
 
@@ -142,8 +141,12 @@ UdpSocket_Win32::Buffer::~Buffer() {
 }
 
 bool UdpSocket_Win32::Buffer::start() {
-    if (state_ != State::READY || (op_ & Op::READ_WRITE) == 0 || size_ == 0) {
-        assert(state_ != State::BUSY);
+    if (state_ != State::READY) {
+        assert(false);
+        setError(std::errc::resource_unavailable_try_again);
+        return false;
+    }
+    if ((op_ & Op::READ_WRITE) == 0 || size_ == 0) {
         setSuccess();
         return false;
     }

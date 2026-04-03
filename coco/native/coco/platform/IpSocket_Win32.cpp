@@ -56,7 +56,7 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
     if (CreateIoCompletionPort(
         (HANDLE)socket,
         loop_.port,
-        ULONG_PTR(static_cast<Loop_Win32::CompletionHandler *>(this)),
+        ULONG_PTR(&static_cast<Loop_Win32::CompletionHandler &>(*this)),
         0) == nullptr)
     {
         goto error;
@@ -75,9 +75,7 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
         state_ = State::READY;
 
         // set buffers READY
-        // transfers can be started when device is OPENING, but get submitted to the OS when the device becomes READY
         for (auto &buffer : buffers_) {
-            buffer.setSuccess(0);
             buffer.setReady();
         }
 
@@ -182,9 +180,7 @@ void IpSocket_Win32::handle(OVERLAPPED *overlapped) {
             state_ = State::READY;
 
             // set buffers READY
-            // transfers can be started when device is OPENING, but get submitted to the OS when the device becomes READY
             for (auto &buffer : buffers_) {
-                buffer.setSuccess(0);
                 buffer.setReady();
             }
 
@@ -217,8 +213,12 @@ IpSocket_Win32::Buffer::~Buffer() {
 }
 
 bool IpSocket_Win32::Buffer::start() {
-    if (state_ != State::READY || (op_ & Op::READ_WRITE) == 0 || size_ == 0) {
-        assert(state_ != State::BUSY);
+    if (state_ != State::READY) {
+        assert(false);
+        setError(std::errc::resource_unavailable_try_again);
+        return false;
+    }
+    if ((op_ & Op::READ_WRITE) == 0 || size_ == 0) {
         setSuccess();
         return false;
     }
