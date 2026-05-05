@@ -23,7 +23,7 @@ public:
 
     /// @brief Buffer for transferring data to/from a TCP socket.
     ///
-    class Buffer : public coco::Buffer, public Loop_io_uring::CompletionHandler, public IntrusiveListNode, public IntrusiveListNode2 {
+    class Buffer : public coco::Buffer, public Loop_io_uring::CompletionHandler, public IntrusiveListNode {
         friend class IpSocket_io_uring;
     public:
         Buffer(IpSocket_io_uring &device, int size);

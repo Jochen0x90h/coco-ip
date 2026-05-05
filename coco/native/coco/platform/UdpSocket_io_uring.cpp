@@ -168,7 +168,7 @@ bool UdpSocket_io_uring::Buffer::transfer() {
         .msg_flags      = 0
     };
 
-    if (!device_.loop_.submit((op_ & Op::WRITE) == 0 ? IORING_OP_RECVMSG : IORING_OP_SENDMSG,
+    if (!device_.loop_.transfer((op_ & Op::WRITE) == 0 ? IORING_OP_RECVMSG : IORING_OP_SENDMSG,
         device_.socket_, &message_, 0, this))
     {
         // error: submit queue full

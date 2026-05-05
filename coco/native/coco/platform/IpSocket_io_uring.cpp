@@ -109,7 +109,7 @@ void IpSocket_io_uring::close() {
     }
 
     // resume all coroutines waiting for state change
-    .notify(Events::ENTER_CLOSING | Events::ENTER_DISABLED);
+    notify(Events::ENTER_CLOSING | Events::ENTER_DISABLED);
 }
 
 void IpSocket_io_uring::handle(io_uring_cqe &cqe) {
@@ -120,7 +120,7 @@ void IpSocket_io_uring::handle(io_uring_cqe &cqe) {
         // error
         // ECANCELED: cancelled
         // ECONNREFUSED: connection refused
-        auto error = errno;
+        auto error = -result;
         setSystemError(error);
 
         // close socket
@@ -178,7 +178,7 @@ bool IpSocket_io_uring::Buffer::start() {
     steps_ = uint8_t(op_ & Op::READ_WRITE);
 
     // add to list of pending transfers
-    device_.transfers_.add(*this);
+    //device_.transfers_.add(*this);
 
     // start transfer
     if (!transfer())
@@ -205,7 +205,7 @@ bool IpSocket_io_uring::Buffer::cancel() {
 }
 
 bool IpSocket_io_uring::Buffer::transfer() {
-    if (!device_.loop_.submit((Op(steps_) & Op::WRITE) == 0 ? IORING_OP_RECV : IORING_OP_SEND,
+    if (!device_.loop_.transfer((Op(steps_) & Op::WRITE) == 0 ? IORING_OP_RECV : IORING_OP_SEND,
         device_.socket_, data_, size_, this))
     {
         // error: submit queue full
