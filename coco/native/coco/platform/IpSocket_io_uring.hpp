@@ -34,7 +34,7 @@ public:
 
     protected:
         bool transfer();
-        void handle(io_uring_cqe &cqe) override;
+        void onCompletion(io_uring_cqe &cqe) override;
 
         IpSocket_io_uring &device_;
     };
@@ -52,7 +52,7 @@ public:
     void close() override;
 
 protected:
-    void handle(io_uring_cqe &cqe) override;
+    void onCompletion(io_uring_cqe &cqe) override;
 
     Loop_io_uring &loop_;
     int type_;

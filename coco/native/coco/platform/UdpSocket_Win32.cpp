@@ -116,11 +116,11 @@ void UdpSocket_Win32::close() {
     notify(Events::ENTER_CLOSING | Events::ENTER_DISABLED);
 }
 
-void UdpSocket_Win32::handle(OVERLAPPED *overlapped) {
+void UdpSocket_Win32::onCompletion(OVERLAPPED *overlapped) {
     // search the buffer that caused the event
     for (auto &buffer : buffers_) {
         if (overlapped == &buffer.overlapped_) {
-            buffer.handle(overlapped);
+            buffer.onCompletion(overlapped);
             break;
         }
     }
@@ -151,7 +151,7 @@ bool UdpSocket_Win32::Buffer::start() {
         return false;
     }
 
-    // store read/write flags for use in transfer(), handle() and cancel()
+    // store read/write flags for use in transfer(), onCompletion() and cancel()
     steps_ = uint8_t(op_ & Op::READ_WRITE);
 
     // start transfer
@@ -214,7 +214,7 @@ bool UdpSocket_Win32::Buffer::transfer() {
     return true;
 }
 
-void UdpSocket_Win32::Buffer::handle(OVERLAPPED *overlapped) {
+void UdpSocket_Win32::Buffer::onCompletion(OVERLAPPED *overlapped) {
     DWORD transferred;
     DWORD flags;
     auto result = WSAGetOverlappedResult(device_.socket_, overlapped, &transferred, false, &flags);

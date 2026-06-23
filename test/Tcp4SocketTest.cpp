@@ -4,7 +4,7 @@
 
 
 /*
-    Tcp4SocketTest: Start a hppt server with $ python -m http.server
+    Tcp4SocketTest: Start a http server with $ python -m http.server
     Then start this test.
 */
 

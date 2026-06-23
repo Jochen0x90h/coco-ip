@@ -33,7 +33,7 @@ public:
 
     protected:
         bool transfer();
-        void handle(io_uring_cqe &cqe) override;
+        void onCompletion(io_uring_cqe &cqe) override;
 
         UdpSocket_io_uring &device_;
         union {
@@ -57,9 +57,7 @@ public:
     // Device methods
     void close() override;
 
-    protected:
-    //void handle(io_uring_cqe &cqe) override;
-
+protected:
     Loop_io_uring &loop_;
 
     // socket handle

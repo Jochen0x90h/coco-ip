@@ -34,7 +34,7 @@ public:
 
     protected:
         bool transfer();
-        void handle(OVERLAPPED *overlapped);
+        void onCompletion(OVERLAPPED *overlapped);
 
         UdpSocket_Win32 &device_;
         union {
@@ -59,7 +59,7 @@ public:
     void close() override;
 
 protected:
-    void handle(OVERLAPPED *overlapped) override;
+    void onCompletion(OVERLAPPED *overlapped) override;
 
     Loop_Win32 &loop_;
 

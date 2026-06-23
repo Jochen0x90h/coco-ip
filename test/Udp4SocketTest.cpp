@@ -10,20 +10,23 @@
 */
 
 Coroutine sender(Loop &loop, Buffer &buffer) {
-    const uint8_t data[] = {1, 2, 3, 4};
+    int i = 1;
     while (true) {
-        co_await buffer.write(data);
         debug::toggleRed();
-        debug::out << "Sent " << dec(buffer.size()) << " to port " << dec(int(buffer.header<ip::Endpoint>().v4.port)) << '\n';
+        debug::out << "Send size " << dec(buffer.size()) << " value " << dec(i) << " to port " << dec(int(buffer.header<ip::Endpoint>().v6.port)) << '\n';
+        buffer.cast<U32L &>() = i;
+        co_await buffer.write(4);
         co_await loop.sleep(1s);
+        ++i;
     }
 }
 
 Coroutine receiver(Loop &loop, Buffer &buffer) {
     while (true) {
         co_await buffer.read();
+        int i = buffer.cast<U32L &>();
         debug::toggleGreen();
-        debug::out << "Received " << dec(buffer.size()) << " from port " << dec(int(buffer.header<ip::Endpoint>().v4.port)) << '\n';
+        debug::out << "Received size " << dec(buffer.size()) << " value " << dec(i) << " from port " << dec(int(buffer.header<ip::Endpoint>().v6.port)) << '\n';
     }
 }
 

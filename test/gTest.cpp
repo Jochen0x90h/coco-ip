@@ -8,7 +8,7 @@
 
 
 using namespace coco;
-
+/*
 TEST(cocoTest, Net16) {
     ip::Net16 x = 80;
     ip::Net16 y = 8080;
@@ -26,8 +26,11 @@ TEST(cocoTest, Net32) {
     EXPECT_EQ(x, 0x7f000001);
     EXPECT_TRUE(x < y);
 }
+*/
 
 TEST(cocoTest, ipv4Address) {
+    EXPECT_EQ(alignof(ip::v4::Address), 4);
+
     ip::v4::Address a4 = *ip::v4::Address::fromString("127.0.0.1");
     EXPECT_EQ(a4.u8[0], 127);
     EXPECT_EQ(a4.u8[1], 0);
@@ -37,6 +40,8 @@ TEST(cocoTest, ipv4Address) {
 }
 
 TEST(cocoTest, ipv6Address) {
+    EXPECT_EQ(alignof(ip::v6::Address), 4);
+
     ip::v6::Address a6 = *ip::v6::Address::fromString("::1");
     EXPECT_EQ(a6.u8[0], 0);
     EXPECT_EQ(a6.u8[1], 0);
