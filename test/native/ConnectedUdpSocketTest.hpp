@@ -5,7 +5,7 @@
 
 using namespace coco;
 
-// drivers for UdpSocketTest
+// drivers for ConnectedUdpSocketTest
 struct Drivers {
     Loop_native loop;
     IpSocket_native socket{loop, SOCK_DGRAM, IPPROTO_UDP};

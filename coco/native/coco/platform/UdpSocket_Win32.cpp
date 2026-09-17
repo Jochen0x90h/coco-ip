@@ -44,7 +44,7 @@ bool UdpSocket_Win32::open(uint16_t protocolId, int localPort) {
     // add socket to completion port of event loop
     if (CreateIoCompletionPort(
         (HANDLE)socket,
-        loop_.port,
+        loop_.port(),
         ULONG_PTR(&static_cast<Loop_Win32::CompletionHandler &>(*this)),
         0) == nullptr)
     {

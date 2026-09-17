@@ -129,7 +129,7 @@ struct Endpoint {
 } // namespace v6
 
 
-/// @brief Endpoin either for IPv4 or v6
+/// @brief Endpoint either for IPv4 or v6
 /// Must be initialized, e.g. ip::Endpoint ep = {}
 /// or ip::Endpoint ep = {.v6 = {.port = 80, .address = myAddress}};
 union Endpoint {

@@ -55,7 +55,7 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
     // add socket to completion port of event loop
     if (CreateIoCompletionPort(
         (HANDLE)socket,
-        loop_.port,
+        loop_.port(),
         ULONG_PTR(&static_cast<Loop_Win32::CompletionHandler &>(*this)),
         0) == nullptr)
     {
