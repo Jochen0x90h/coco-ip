@@ -30,7 +30,7 @@ bool IpSocket_io_uring::connect(const ip::Endpoint &endpoint, int size, int loca
     int socket = ::socket(endpoint.protocolId, type_ | SOCK_NONBLOCK, protocol_);
     if (socket == INVALID_SOCKET) {
         int error = errno;
-        setSystemError(errno);
+        setSystemError(error);
         return false;
     }
 
@@ -65,7 +65,7 @@ bool IpSocket_io_uring::connect(const ip::Endpoint &endpoint, int size, int loca
         events = Events::ENTER_OPENING | Events::ENTER_READY;
     } else {
         // connect TCP
-        if (!loop_.connect(socket, endpoint, this)) {
+        if (!loop_.connect(*this, socket, endpoint)) {
             // error: submit queue full
             setError(std::errc::resource_unavailable_try_again);
             ::close(socket);
@@ -112,7 +112,7 @@ void IpSocket_io_uring::close() {
     notify(Events::ENTER_CLOSING | Events::ENTER_DISABLED);
 }
 
-void IpSocket_io_uring::handle(io_uring_cqe &cqe) {
+void IpSocket_io_uring::onCompletion(io_uring_cqe &cqe, int) {
     int result = cqe.res;
     if (result == -EINPROGRESS) {
         // connect is in progress
@@ -194,7 +194,7 @@ bool IpSocket_io_uring::Buffer::cancel() {
         return false;
 
     if (steps_ != 0) {
-        if (!device_.loop_.cancel(this)) {
+        if (!device_.loop_.cancel(*this)) {
             // error: submit buffer full
             setError(std::errc::resource_unavailable_try_again);
             return false;
@@ -205,8 +205,8 @@ bool IpSocket_io_uring::Buffer::cancel() {
 }
 
 bool IpSocket_io_uring::Buffer::transfer() {
-    if (!device_.loop_.transfer((Op(steps_) & Op::WRITE) == 0 ? IORING_OP_RECV : IORING_OP_SEND,
-        device_.socket_, data_, size_, this))
+    if (!device_.loop_.transfer(*this, (Op(steps_) & Op::WRITE) == 0 ? IORING_OP_RECV : IORING_OP_SEND,
+        device_.socket_, data_, size_))
     {
         // error: submit queue full
         setError(std::errc::resource_unavailable_try_again);
@@ -216,7 +216,7 @@ bool IpSocket_io_uring::Buffer::transfer() {
     return true;
 }
 
-void IpSocket_io_uring::Buffer::handle(io_uring_cqe &cqe) {
+void IpSocket_io_uring::Buffer::onCompletion(io_uring_cqe &cqe, int) {
     int result = cqe.res;
     if (result >= 0) {
         // success

@@ -45,11 +45,11 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
 
     // reuse address/port
     // https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ
-    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0)
+    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) == SOCKET_ERROR)
         goto error;
 
     // bind to any local address/port (required by ConnectEx)
-    if (bind(socket, (sockaddr *)&local, sizeof(local)) < 0)
+    if (bind(socket, (sockaddr *)&local, sizeof(local)) == SOCKET_ERROR)
         goto error;
 
     // add socket to completion port of event loop
@@ -65,7 +65,7 @@ bool IpSocket_Win32::connect(const ip::Endpoint &endpoint, int size, int localPo
     Events events;
     if (type_ == SOCK_DGRAM) {
         // connect UDP
-        if (::connect(socket, (struct sockaddr *)&endpoint, size) < 0)
+        if (::connect(socket, (struct sockaddr *)&endpoint, size) == SOCKET_ERROR)
             goto error;
 
         socket_ = socket;

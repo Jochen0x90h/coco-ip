@@ -33,7 +33,7 @@ public:
 
     protected:
         bool transfer();
-        void onCompletion(io_uring_cqe &cqe) override;
+        void onCompletion(io_uring_cqe &cqe, int) override;
 
         UdpSocket_io_uring &device_;
         union {

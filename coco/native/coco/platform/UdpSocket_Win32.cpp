@@ -34,11 +34,11 @@ bool UdpSocket_Win32::open(uint16_t protocolId, int localPort) {
 
     // reuse address/port
     // https://stackoverflow.com/questions/14388706/how-do-so-reuseaddr-and-so-reuseport-differ
-    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) < 0)
+    if (setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse, sizeof(reuse)) == SOCKET_ERROR)
         goto error;
 
     // bind to local port
-    if (bind(socket, (struct sockaddr*)&ep, sizeof(ep)) < 0)
+    if (bind(socket, (struct sockaddr*)&ep, sizeof(ep)) == SOCKET_ERROR)
         goto error;
 
     // add socket to completion port of event loop

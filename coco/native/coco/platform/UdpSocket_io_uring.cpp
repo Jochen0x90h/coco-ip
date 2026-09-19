@@ -146,7 +146,7 @@ bool UdpSocket_io_uring::Buffer::cancel() {
         return false;
 
     if (steps_ != 0) {
-        if (!device_.loop_.cancel(this)) {
+        if (!device_.loop_.cancel(*this)) {
             // error: submit buffer full
             setError(std::errc::resource_unavailable_try_again);
             return false;
@@ -168,8 +168,8 @@ bool UdpSocket_io_uring::Buffer::transfer() {
         .msg_flags      = 0
     };
 
-    if (!device_.loop_.transfer((op_ & Op::WRITE) == 0 ? IORING_OP_RECVMSG : IORING_OP_SENDMSG,
-        device_.socket_, &message_, 0, this))
+    if (!device_.loop_.transfer(*this, (op_ & Op::WRITE) == 0 ? IORING_OP_RECVMSG : IORING_OP_SENDMSG,
+        device_.socket_, &message_, 0))
     {
         // error: submit queue full
         setError(std::errc::resource_unavailable_try_again);
@@ -179,7 +179,7 @@ bool UdpSocket_io_uring::Buffer::transfer() {
     return true;
 }
 
-void UdpSocket_io_uring::Buffer::handle(io_uring_cqe &cqe) {
+void UdpSocket_io_uring::Buffer::onCompletion(io_uring_cqe &cqe, int) {
     int result = cqe.res;
     if (result >= 0) {
         // success
