@@ -5,7 +5,7 @@ Defines basic address structures and provides socket abstractions.
 Implements UDP/IP and TCP/IP client on native platforms. Additionally import coco-tcp for TCP/IP servers.
 
 ## Import
-Add coco-ip/\<version> to your conanfile where version corresponds to the git tags.
+Add coco-ip/\<version> to your conanfile where version corresponds to a git tag.
 
 ## Features
 * Connection based IP socket (UDP with fixed destination address or TCP client)
