@@ -284,7 +284,12 @@ void IpSocket_Win32::Buffer::onCompletion(OVERLAPPED *overlapped) {
     DWORD transferred;
     DWORD flags;
     auto result = WSAGetOverlappedResult(device_.socket_, overlapped, &transferred, false, &flags);
-    if (result) {
+    if (!result) {
+        // error
+        // canceled: ERROR_OPERATION_ABORTED
+        auto error = WSAGetLastError();
+        setSystemError(error);
+    } else {
         // success
 
         // check for connection closed by peer
@@ -301,11 +306,6 @@ void IpSocket_Win32::Buffer::onCompletion(OVERLAPPED *overlapped) {
         }
 
         setSuccess(transferred);
-    } else {
-        // error
-        // canceled: ERROR_OPERATION_ABORTED
-        auto error = WSAGetLastError();
-        setSystemError(error);
     }
 
     // transfer finished

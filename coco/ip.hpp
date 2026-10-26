@@ -3,6 +3,7 @@
 #include <coco/PackedValue.hpp>
 #include <coco/String.hpp>
 #include <optional>
+#include <cstring>
 #if defined(_WIN32)
 #include <coco/platform/WindowsDef.hpp>
 #include <winsock2.h> // see https://learn.microsoft.com/en-us/windows/win32/winsock/creating-a-basic-winsock-application
@@ -35,13 +36,10 @@ constexpr uint16_t PROTOCOL_ID =
 
 
 union alignas(4) Address {
-    uint8_t u8[4];
+    U32B u32[1] = {0};
     U16B u16[2];
-    U32B u32[1];
+    U8 u8[4];
 
-
-    Address() : u32{0} {}
-    Address(const Address &a) : u32{a.u32[0]} {}
 
     /// @brief Create an address from a string
     /// @param s String containing the address, e.g. "::1" for localhost
@@ -83,13 +81,10 @@ constexpr uint16_t PROTOCOL_ID =
 
 
 union alignas(4) Address {
-    U8 u8[16];
+    U32B u32[4] = {0, 0, 0, 0};
     U16B u16[8];
-    U32B u32[4];
+    U8 u8[16];
 
-
-    Address() : u32{0, 0, 0, 0} {}
-    Address(const Address &a) : u32{a.u32[0], a.u32[1], a.u32[2], a.u32[3]} {}
 
     /// @brief Create an address from a string
     /// @param s String containing the address, e.g. "::1" for localhost
@@ -132,14 +127,16 @@ struct Endpoint {
 /// @brief Endpoint either for IPv4 or v6
 /// Must be initialized, e.g. ip::Endpoint ep = {}
 /// or ip::Endpoint ep = {.v6 = {.port = 80, .address = myAddress}};
-union Endpoint {
-    uint16_t protocolId;
-    struct {
+struct Endpoint {
+    union {
         uint16_t protocolId;
-        U16B port;
-    } generic;
-    v4::Endpoint v4;
-    v6::Endpoint v6;
+        struct {
+            uint16_t protocolId;
+            U16B port;
+        } generic;
+        v4::Endpoint v4;
+        v6::Endpoint v6;
+    };
 };
 
 } // namespace ip

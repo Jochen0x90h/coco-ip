@@ -14,6 +14,7 @@ Coroutine request(Loop &loop, IpSocket &socket, Buffer &buffer) {
     if (!socket.ready()) {
         // error: probably no server running on the given port
         debug::out << "Error: " << socket.error().message() << '\n';
+        debug::out << "Start a http server with $ python -m http.server\n";
         loop.exit();
         co_return;
     }

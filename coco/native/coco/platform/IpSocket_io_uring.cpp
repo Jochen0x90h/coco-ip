@@ -218,7 +218,13 @@ bool IpSocket_io_uring::Buffer::transfer() {
 
 void IpSocket_io_uring::Buffer::onCompletion(io_uring_cqe &cqe, int) {
     int result = cqe.res;
-    if (result >= 0) {
+    if (result < 0) {
+        // error
+        // ECANCELED: cancelled
+        // EMSGSIZE: datagram was larger than buffer (for UDP)
+        int error = -result;
+        setSystemError(error);
+    } else {
         // success
         int transferred = result;
 
@@ -236,12 +242,6 @@ void IpSocket_io_uring::Buffer::onCompletion(io_uring_cqe &cqe, int) {
         }
 
         setSuccess(transferred);
-    } else {
-        // error
-        // ECANCELED: cancelled
-        // EMSGSIZE: datagram was larger than buffer (for UDP)
-        int error = -result;
-        setSystemError(error);
     }
 
     // transfer finished

@@ -181,16 +181,16 @@ bool UdpSocket_io_uring::Buffer::transfer() {
 
 void UdpSocket_io_uring::Buffer::onCompletion(io_uring_cqe &cqe, int) {
     int result = cqe.res;
-    if (result >= 0) {
-        // success
-        int transferred = result;
-        setSuccess(transferred);
-    } else {
+    if (result < 0) {
         // error
         // EMSGSIZE: datagram was larger than buffer (for UDP)
         // ECANCELED: cancelled
         int error = -result;
         setSystemError(error);
+    } else {
+        // success
+        int transferred = result;
+        setSuccess(transferred);
     }
 
     // transfer finished
